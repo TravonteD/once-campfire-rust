@@ -1,5 +1,6 @@
-//! Link unfurling: `UnfurlLinksController#create` (reference/app/controllers/unfurl_links_controller.rb)
-//! over `Opengraph::Metadata`, `Location`, `Fetch` and `Document` (reference/app/models/opengraph).
+//! Unfurling: `UnfurlLinksController#create` (reference/app/controllers/unfurl_links_controller.rb)
+//! over `Opengraph::Metadata`, `Location`, `Fetch` and `Document` (reference/app/models/opengraph),
+//! plus URLs that point at an image (`images.rs`, README "Known differences").
 //!
 //! Every address is resolved through the private network guard and pinned, every redirect is
 //! re-checked, and documents are capped at 5MB and 10 responses.
@@ -12,6 +13,7 @@ mod document;
 mod entities;
 mod fetch;
 mod html;
+mod images;
 mod location;
 mod metadata;
 
@@ -55,6 +57,11 @@ async fn unfurl_within(net: &Network, url: &str, deadline: Duration) -> Result<U
     static SLOTS: Semaphore = Semaphore::const_new(MAX_CONCURRENT_UNFURLS);
     let unfurling = async {
         let _slot = SLOTS.acquire().await.expect("never closed");
+        // An image URL (direct, or a GIPHY page's media) unfurls as the image (`images`), and the
+        // regular OpenGraph flow never runs for it.
+        if let Some(image) = images::from_url(net, url).await? {
+            return Ok(Unfurl::Json(images::response_json(&image)));
+        }
         let mut opengraph = Metadata::from_url(net, url).await?;
         Ok(if opengraph.validate(net).await? { Unfurl::Json(opengraph.to_json()) } else { Unfurl::NoContent })
     };

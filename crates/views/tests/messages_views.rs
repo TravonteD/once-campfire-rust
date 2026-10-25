@@ -47,6 +47,18 @@ fn edit_text_message() {
     g.assert_content(&g.render(|ctx| messages::Edit { ctx, edit: &edit }.render().unwrap()));
 }
 
+/// The message editor also accepts remote image attachments, as inline image links need (README,
+/// "Known differences"): the parity mask above folds the list away, here it's pinned.
+#[test]
+fn edit_text_message_permits_remote_image_attachments() {
+    let g = golden("messages_edit_text");
+    let edit: EditView = g.input();
+    let html = g.render(|ctx| messages::Edit { ctx, edit: &edit }.render().unwrap());
+    assert!(
+        html.contains("permitted-attachment-types=\"application/vnd.campfire.mention application/vnd.actiontext.opengraph-embed image/*\"")
+    );
+}
+
 #[test]
 fn edit_attachment_message() {
     let g = golden("messages_edit_attachment");

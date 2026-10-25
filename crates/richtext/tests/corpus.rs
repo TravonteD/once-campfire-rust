@@ -328,8 +328,12 @@ fn corpus_matches_rails() {
         let label = format!("[editable] {name}");
         // Deliberate: missing attachables leave the editor, where Rails raises.
         let missing_in_editor = case["editable"]["message"].as_str().is_some_and(|m| m.contains("MissingAttachable"));
+        // Deliberate (README, "Inline image links"): a remote image or video attachment with a
+        // URL stays in the editor as stored, where Rails raises and makes the message uneditable.
+        let remote_media_in_editor =
+            case["editable"]["message"].as_str().is_some_and(|m| m.contains("RemoteImage") || m.contains("RemoteVideo"));
         match (outcome_str(&case["editable"]), &actual) {
-            (Err(_), Ok(_)) if missing_in_editor => tallies.entry("editable").or_default().exact += 1,
+            (Err(_), Ok(_)) if missing_in_editor || remote_media_in_editor => tallies.entry("editable").or_default().exact += 1,
             (Ok(e), Ok(a)) => tallies.entry("editable").or_default().record(label, &format!("{e:?}"), &format!("{a:?}")),
             (Err(_), Err(_)) => tallies.entry("editable").or_default().exact += 1,
             (e, _) => tallies.entry("editable").or_default().record(label, &format!("{e:?}"), &render(&actual)),

@@ -148,6 +148,15 @@ behavior changes and compatibility limits are listed below.
   connections after commit.
 - **Unfurling:** 10 seconds overall, 5 per connect/read, at most 16 concurrent unfurls, and only
   the first 256 attributes of a `meta` tag are read. Timed-out pages unfurl nothing.
+- **Inline image links:** `/unfurl_link` treats a URL whose path carries an image extension
+  (`.gif`, `.jpg`, `.jpeg`, `.png` or `.webp`) or a `giphy.com/gifs/<slug>` page link (resolved to
+  the slug's media URL) as the image itself, answering `{"image": …}` after a content-type check
+  through the same private-address guard, and the composer replaces the pasted link with a remote
+  image attachment. The reference unfurled neither, and only unfurled pages show OpenGraph images.
+  The composer and the message editor permit remote image attachments, and editing keeps the
+  stored attachment node, where Rails makes such a message raise on its edit page. A candidate
+  whose HEAD isn't one of the image types unfurls the way the reference did (pages through
+  OpenGraph, never anything for the extension), so the link stays a link.
 - **Webhooks:** 60 seconds overall, 7 per connect/read. Replies over 100 MB after decompression
   fail delivery without posting a response.
 - **Front server:** `TARGET_PORT` binds loopback and enforces front-server timeouts and

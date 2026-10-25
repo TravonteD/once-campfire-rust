@@ -73,6 +73,19 @@ fn show_room_around_message() {
     show("rooms_show_at_message");
 }
 
+/// The composer's editor permits remote image attachments as well as the reference's mention and
+/// embed types, which inline image links need (README, "Known differences"): the parity mask in
+/// the shared golden support folds the attribute away, here it's pinned.
+#[test]
+fn composer_permits_remote_image_attachments() {
+    let g = golden("rooms_show_original");
+    let show: ShowView = g.input();
+    let html = g.render(|ctx| rooms::Show { ctx, show: &show }.render().unwrap());
+    assert!(
+        html.contains("permitted-attachment-types=\"application/vnd.campfire.mention application/vnd.actiontext.opengraph-embed image/*\"")
+    );
+}
+
 #[test]
 fn new_open_room() {
     let g = golden("rooms_opens_new");

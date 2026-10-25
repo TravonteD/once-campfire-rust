@@ -92,6 +92,14 @@ pub fn editable_value(body: &str, ctx: &RenderContext) -> Result<Option<String>,
             dom.detach(node);
             continue;
         }
+        // Remote media attachments Lexxy understands only from their attributes (README,
+        // "Known differences"): Rails rebuilds them too and raises, which would make a message
+        // with an inline image uneditable; the stored node is what the editor wants as it is.
+        if matches!(attachment.attachable, attachables::Attachable::RemoteImage { .. } | attachables::Attachable::RemoteVideo { .. })
+            && !is_blank(dom.attr(node, "url").unwrap_or(""))
+        {
+            continue;
+        }
         let content_type = attachment.attachable.attachable_content_type()?.to_string();
         let content = render_attachment_html(&attachment, ctx)?;
         dom.set_attr(node, "content-type", &content_type);

@@ -10,3 +10,16 @@
   layers: [server]
   reason: The custom-styles seed has the same deliberate JSON-escaped logo URL as pwa/manifest (README, "The web app manifest is valid JSON")
   owner: views
+
+# The composer's and the message editor's `permitted-attachment-types` also list `image/*`, and
+# controllers/unfurl_controller.js is an asset override: both because a pasted image URL (or a
+# GIPHY page's resolved media URL) unfurls inline. README, "Inline image links".
+- state: "rooms/show/*"
+  layers: [server]
+  reason: The composer's editor permits remote image attachments, which inline image links need (README, "Inline image links")
+  owner: views
+
+- state: "interactions/edit_form*"
+  layers: [server]
+  reason: The message editor permits remote image attachments, which inline image links need (README, "Inline image links")
+  owner: views

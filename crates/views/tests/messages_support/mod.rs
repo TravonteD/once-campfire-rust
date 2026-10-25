@@ -102,7 +102,12 @@ impl Golden {
         } else {
             expected
         };
-        assert_same(&self.name, &trim_whitespace(expected), &trim_whitespace(tokens(actual_html)));
+        let actual = tokens(actual_html);
+        assert_same(
+            &self.name,
+            &trim_whitespace(without_permitted_attachment_types(expected)),
+            &trim_whitespace(without_permitted_attachment_types(actual)),
+        );
     }
 
     pub fn assert_dom(&self, actual_html: &str) {
@@ -113,10 +118,18 @@ impl Golden {
             assert!(!regions.is_empty(), "{}: no regions in reference", self.name);
             let actual_regions = regions_named(&actual, &regions.iter().map(|(n, _)| *n).collect::<Vec<_>>());
             for ((name, expected), (_, actual)) in regions.iter().zip(actual_regions.iter()) {
-                assert_same(&format!("{} [{name}]", self.name), expected, actual);
+                assert_same(
+                    &format!("{} [{name}]", self.name),
+                    &trim_whitespace(without_permitted_attachment_types(expected.clone())),
+                    &trim_whitespace(without_permitted_attachment_types(actual.clone())),
+                );
             }
         } else {
-            assert_same(&self.name, &trim_whitespace(expected), &trim_whitespace(actual));
+            assert_same(
+                &self.name,
+                &trim_whitespace(without_permitted_attachment_types(expected)),
+                &trim_whitespace(without_permitted_attachment_types(actual)),
+            );
         }
     }
 }
@@ -149,6 +162,23 @@ fn with_relative_copy_link(token: String) -> String {
     let path = &url[url.find("://").unwrap() + 3..];
     let path = &path[path.find('/').unwrap()..];
     format!("{}data-copy-to-clipboard-url-value=\"{path}\"{}", &token[..start], &token[value_end + 1..])
+}
+
+/// The composer's and the message editor's `permitted-attachment-types` also list `image/*`, which
+/// inline image links need (README, Known differences): the reference's list has only the mention
+/// and OpenGraph embed types. Both streams fold the attribute to a placeholder so this parity
+/// suite keeps comparing the editors otherwise.
+fn without_permitted_attachment_types(tokens: Vec<String>) -> Vec<String> {
+    const ATTRIBUTE: &str = "permitted-attachment-types=\"";
+    tokens
+        .into_iter()
+        .map(|token| {
+            let Some(start) = token.find(ATTRIBUTE) else { return token };
+            let value = start + ATTRIBUTE.len();
+            let Some(end) = token[value..].find('"') else { return token };
+            format!("{}«permits»{}", &token[..value], &token[value + end..])
+        })
+        .collect()
 }
 
 fn assert_same(label: &str, expected: &[String], actual: &[String]) {

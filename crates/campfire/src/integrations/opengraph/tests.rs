@@ -163,3 +163,94 @@ async fn gives_up_on_a_trickling_page() {
     assert_eq!(unfurl_within(&network_to(server), "http://www.example.com/", deadline).await, Ok(Unfurl::NoContent));
     assert!(started.elapsed() < deadline * 2, "{:?}", started.elapsed());
 }
+
+// --- `images` -----------------------------------------------------------------------------------
+
+/// The hosts resolve to `93.184.216.<i+1>` and every dialed address is the fake `server`, like
+/// `network_to` pins one address (see `unfurls_over_https`). Plain HTTP: the test TLS
+/// certificate only names the example.com hosts (see `unfurls_over_https`), which
+/// `direct_image_urls_unfurl_as_the_image` covers the https side of.
+async fn image_network(hosts: &[&str], routes: Vec<Route>) -> Network {
+    let server = FakeServer::start(routes).await;
+    let ips: Vec<String> = (1..=hosts.len()).map(|i| format!("93.184.216.{i}")).collect();
+    let resolver = Arc::new(FakeResolver::new(hosts.iter().zip(&ips).map(|(host, ip)| (*host, vec![ip.as_str()]))));
+    let dialer = Arc::new(MappingDialer {
+        public: ips.iter().map(|ip| ip.parse().unwrap()).collect(),
+        to: server.addr,
+        dialed: Mutex::new(Vec::new()),
+    });
+    network(resolver, dialer)
+}
+
+#[tokio::test]
+async fn direct_image_urls_unfurl_as_the_image() {
+    let net = image_network(
+        &["media.giphy.com"],
+        vec![Route::new("HEAD", "media.giphy.com", "/media/x/giphy.gif", 200).header("Content-Type", "image/gif")],
+    )
+    .await;
+
+    let Unfurl::Json(body) = unfurl(&net, "http://media.giphy.com/media/x/giphy.gif").await.unwrap() else { panic!("no image") };
+    assert_eq!(body, r#"{"image":"http://media.giphy.com/media/x/giphy.gif"}"#);
+
+    // A private address (or any unresolvable one) unfurls nothing.
+    assert_eq!(unfurl(&net, "http://127.0.0.1/gif.gif").await, Ok(Unfurl::NoContent));
+    assert_eq!(unfurl(&net, "http://nowhere.test/gif.gif").await, Ok(Unfurl::NoContent));
+
+    // And over https, with the certificate verified against the host name.
+    let tls =
+        FakeServer::start_tls(vec![Route::new("HEAD", "example.com", "/media/x/giphy.gif", 200).header("Content-Type", "image/gif")]).await;
+    let resolver = Arc::new(FakeResolver::new([("example.com", vec!["93.184.216.34"])]));
+    let dialer =
+        Arc::new(MappingDialer { public: HashSet::from(["93.184.216.34".parse().unwrap()]), to: tls.addr, dialed: Mutex::new(Vec::new()) });
+    let Unfurl::Json(body) = unfurl(&network(resolver, dialer), "https://example.com/media/x/giphy.gif").await.unwrap() else {
+        panic!("no image")
+    };
+    assert_eq!(body, r#"{"image":"https://example.com/media/x/giphy.gif"}"#);
+}
+
+/// An extension that lies about its content type falls back to the OpenGraph flow, which refuses
+/// to read it (`Location#read_html` matches it as files and media) and unfurls nothing, as the
+/// reference did for these URLs.
+#[tokio::test]
+async fn a_non_image_gif_url_unfurls_nothing() {
+    let net =
+        image_network(&["www.example.com"], vec![Route::new("HEAD", "www.example.com", "/x.gif", 404).header("Content-Type", "text/html")])
+            .await;
+    assert_eq!(unfurl(&net, "https://www.example.com/x.gif").await, Ok(Unfurl::NoContent));
+}
+
+/// A `giphy.com/gifs/<slug>` page link resolves to its media URL; a slug without a real ID ends
+/// up somewhere that doesn't serve the image, and the unfurl falls back (to nothing here).
+#[tokio::test]
+async fn giphy_page_links_resolve_to_their_media() {
+    let net = image_network(
+        &["media.giphy.com"],
+        vec![
+            Route::new("HEAD", "media.giphy.com", "/media/l0MYt5jPR6QXJDpbM/giphy.gif", 200).header("Content-Type", "image/gif"),
+            Route::new("HEAD", "media.giphy.com", "/media/not-an-id/giphy.gif", 404).header("Content-Type", "text/html"),
+        ],
+    )
+    .await;
+
+    let Unfurl::Json(body) = unfurl(&net, "http://giphy.com/gifs/funny-cat-l0MYt5jPR6QXJDpbM").await.unwrap() else { panic!("no image") };
+    assert_eq!(body, r#"{"image":"http://media.giphy.com/media/l0MYt5jPR6QXJDpbM/giphy.gif"}"#);
+
+    assert_eq!(unfurl(&net, "https://giphy.com/gifs/not-an-id").await, Ok(Unfurl::NoContent));
+}
+
+/// The media check is an ordinary `Fetch`: redirects are re-resolved through the network guard.
+#[tokio::test]
+async fn an_image_redirect_rechecks_the_target_host() {
+    let net = image_network(
+        &["media.giphy.com", "updates.giphy.com"],
+        vec![
+            Route::new("HEAD", "media.giphy.com", "/media/x/giphy.gif", 301).header("Location", "http://updates.giphy.com/x.gif"),
+            Route::new("HEAD", "updates.giphy.com", "/x.gif", 200).header("Content-Type", "image/gif"),
+        ],
+    )
+    .await;
+
+    let Unfurl::Json(body) = unfurl(&net, "http://media.giphy.com/media/x/giphy.gif").await.unwrap() else { panic!("no image") };
+    assert_eq!(body, r#"{"image":"http://media.giphy.com/media/x/giphy.gif"}"#);
+}

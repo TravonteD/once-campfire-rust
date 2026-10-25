@@ -13,7 +13,8 @@ use crate::integrations::net::Network;
 
 const TWITTER_HOSTS: [&str; 4] = ["twitter.com", "www.twitter.com", "x.com", "www.x.com"];
 const FX_TWITTER_HOST: &str = "fxtwitter.com";
-const ALLOWED_IMAGE_CONTENT_TYPES: [&str; 4] = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+/// `ALLOWED_IMAGE_CONTENT_TYPES` — `valid_image_content_type` accepts exactly these.
+pub(super) const ALLOWED_IMAGE_CONTENT_TYPES: [&str; 4] = ["image/jpeg", "image/png", "image/gif", "image/webp"];
 
 /// The model's attributes as instance variables, in the order they were first assigned (which
 /// is the order `render json:` emits them).
